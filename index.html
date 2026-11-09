@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cine Teatro 3D - Laboratorio A-Frame</title>
+
+ <script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+   <script>
+AFRAME.registerComponent('touch-look', {
+
+    init: function () {
+
+        this.canvas = null;
+        this.pointerActivo = null;
+
+        this.ultimaX = 0;
+        this.ultimaY = 0;
+
+        this.sensibilidad = 0.003;
+        this.limiteVertical = THREE.MathUtils.degToRad(75);
+
+        this.onPointerDown = this.onPointerDown.bind(this);
+        this.onPointerMove = this.onPointerMove.bind(this);
+        this.onPointerUp = this.onPointerUp.bind(this);
+
+        this.el.sceneEl.addEventListener('renderstart', () => {
+            this.canvas = this.el.sceneEl.canvas;
+
+            if (!this.canvas) return;
+
+            this.canvas.style.touchAction = 'none';
+
+            this.canvas.addEventListener(
+                'pointerdown', this.onPointerDown
+            );
+
+            this.canvas.addEventListener(
+                'pointermove', this.onPointerMove,
+                { passive: false }
+            );
+
+            this.canvas.addEventListener(
+                'pointerup', this.onPointerUp
+            );
+
+            this.canvas.addEventListener(
+                'pointercancel', this.onPointerUp
+            );
+        });
+    },
+
+    onPointerDown: function (e) {
+
+        if (e.pointerType !== 'touch') return;
+
+        this.pointerActivo = e.pointerId;
+
+        this.ultimaX = e.clientX;
+        this.ultimaY = e.clientY;
+
+        if (this.canvas.setPointerCapture) {
+            this.canvas.setPointerCapture(e.pointerId);
+        }
+
+        e.preventDefault();
+    },
+
+    onPointerMove: function (e) {
+
+        if (e.pointerId !== this.pointerActivo) return;
+
+        e.preventDefault();
+
+        const dx = e.clientX - this.ultimaX;
+        const dy = e.clientY - this.ultimaY;
+
+        this.ultimaX = e.clientX;
+        this.ultimaY = e.clientY;
+
+        const look = this.el.components['look-controls'];
+
+        if (!look || !look.yawObject || !look.pitchObject) {
+            return;
+        }
+
+        // Giro horizontal
+        look.yawObject.rotation.y -= dx * this.sensibilidad;
+
+        // Mirada vertical
+        look.pitchObject.rotation.x -= dy * this.sensibilidad;
+
+        // Evitar que la cámara dé una vuelta completa
+        look.pitchObject.rotation.x = THREE.MathUtils.clamp(
+            look.pitchObject.rotation.x,
+            -this.limiteVertical,
+            this.limiteVertical
+        );
+    },
+
+    onPointerUp: function (e) {
+
+        if (e.pointerId === this.pointerActivo) {
+            this.pointerActivo = null;
+        }
+    },
+
+    remove: function () {
+
+        if (!this.canvas) return;
+
+        this.canvas.removeEventListener(
+            'pointerdown', this.onPointerDown
+        );
+
+        this.canvas.removeEventListener(
+            'pointermove', this.onPointerMove
+        );
+
+        this.canvas.removeEventListener(
+            'pointerup', this.onPointerUp
+        );
+
+        this.canvas.removeEventListener(
+            'pointercancel', this.onPointerUp
+        );
+    }
+}); 
+AFRAME.registerComponent('ticket-booth', {
+
+    init: function () {
+
+        this.el.addEventListener('click', () => {
+
+            document
+                .getElementById('ventana-entrada')
+                .classList.add('visible');
+
+        });
+
+    }
+
+}); 
+ AFRAME.registerComponent('booth-proximity', {
+
+    init: function () {
+
+        this.letrero = document.getElementById('letrero-boleteria');
+
+        this.distanciaActivacion = 3.5;
+        this.visibleAnterior = false;
+
+    },
+
+    tick: function () {
+
+        if (!this.letrero) return;
+
+        // Si ya compró, el letrero permanece oculto.
+        if (window.entradaComprada) {
+
+            if (this.visibleAnterior) {
+                this.letrero.setAttribute('visible', false);
+                this.visibleAnterior = false;
+            }
+
+            return;
+        }
+
+        const jugador = this.el.object3D.position;
+        const letrero = this.letrero.object3D.position;
+
+        const distancia = Math.hypot(
+            jugador.x - letrero.x,
+            jugador.z - letrero.z
+        );
+
+        const debeMostrar = distancia <= this.distanciaActivacion;
+
+        if (debeMostrar !== this.visibleAnterior) {
+
+            this.letrero.setAttribute('visible', debeMostrar);
+
+            this.visibleAnterior = debeMostrar;
+        }
+
+    }
+
+});
+</script>
+  <style>
+      
+      html, body {
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+a-scene,
+a-scene canvas {
+  touch-action: none !important;
+}
+    html, body { margin: 0; height: 100%; overflow: hidden; font-family: Arial, sans-serif; }
+    #ayuda {
+      position: fixed; z-index: 10; left: 12px; top: 12px; max-width: 310px;
+      padding: 10px 13px; color: white; background: #111c; border-radius: 8px;
+      font-size: 13px; line-height: 1.45;
+    }
+    #ventana-entrada {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #000c;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+#ventana-entrada.visible {
+    display: flex;
+}
+
+.panel-entrada {
+    width: 100%;
+    max-width: 350px;
+    padding: 25px;
+    background: #191820;
+    color: white;
+    border: 2px solid #c49a55;
+    border-radius: 15px;
+    text-align: center;
+    box-sizing: border-box;
+}
+
+.entrada-dato {
+    background: #302b31;
+    border-radius: 10px;
+    padding: 12px;
+    margin: 15px 0;
+}
+
+.entrada-dato h2 {
+    color: #e6bd75;
+}
+
+.panel-entrada button {
+    display: block;
+    width: 100%;
+    padding: 13px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 8px;
+    font-weight: bold;
+    background: #a3293b;
+    color: white;
+    cursor: pointer;
+}
+    #controles-moviles {
+  position: fixed;
+  z-index: 20;
+  bottom: 25px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.fila-flechas {
+  display: flex;
+  gap: 7px;
+}
+
+.flecha {
+  width: 65px;
+  height: 58px;
+  border: 1px solid #ffffff66;
+  border-radius: 13px;
+  background: #171820dd;
+  color: white;
+  font-size: 25px;
+  touch-action: none;
+}
+
+.flecha:active {
+  background: #a3293b;
+}
+
+#activarSensor {
+  position: fixed;
+  z-index: 25;
+  top: 12px;
+  right: 12px;
+  padding: 12px;
+  background: #8f1727;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+}
+
+#estadoSensor {
+  position: fixed;
+  z-index: 25;
+  top: 60px;
+  right: 12px;
+  color: white;
+  background: #111c;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+@media (pointer: fine) {
+  #controles-moviles {
+    display: none;
+  }
+}
+  </style>
+</head>
+<body>
+  <div id="ayuda">
+    <b>CINE TEATRO 3D — LABORATORIO 1</b><br>
+    Caminar: W A S D o flechas<br>
+    Mirar: mover el mouse (clic y arrastrar)<br>
+    En celular: arrastra para mirar; el movimiento táctil lo agregaremos en la siguiente etapa.
+  </div>
+<div id="controles-moviles">
+
+  <button class="flecha arriba" data-move="forward">▲</button>
+
+  <div class="fila-flechas">
+    <button class="flecha" data-move="left">◀</button>
+    <button class="flecha" data-move="backward">▼</button>
+    <button class="flecha" data-move="right">▶</button>
+  </div>
+
+</div>
+
+<button id="activarSensor">
+  ACTIVAR GIROSCOPIO
+</button>
+
+<div id="estadoSensor">Controles táctiles disponibles</div>
+<div id="ventana-entrada">
+
+    <div class="panel-entrada">
+
+        <h2>🎟️ BOLETERÍA</h2>
+
+        <p>Bienvenido al Cine Teatro</p>
+
+        <div class="entrada-dato">
+            <strong>ENTRADA GENERAL</strong>
+            <p>Acceso a sala principal</p>
+            <h2>$5.000</h2>
+        </div>
+
+        <p id="mensaje-entrada">
+            Selecciona comprar para obtener tu entrada.
+        </p>
+
+        <button id="btnComprar">
+            COMPRAR ENTRADA
+        </button>
+
+        <button id="btnEntrar" style="display:none">
+            ENTRAR A LA SALA
+        </button>
+
+        <button id="btnCerrar">
+            CERRAR
+        </button>
+
+    </div>
+
+</div>
+  <a-scene background="color: #090b12" renderer="colorManagement: true">
+    <a-assets>
+      <a-mixin id="butaca-asiento" geometry="primitive: box; width: 0.82; height: 0.18; depth: 0.82"
+               material="color: #8f1727; roughness: 0.85"></a-mixin>
+      <a-mixin id="butaca-respaldo" geometry="primitive: box; width: 0.82; height: 0.95; depth: 0.18"
+               material="color: #68101d; roughness: 0.9"></a-mixin>
+    </a-assets>
+
+    <!-- Suelo y estructura general -->
+    <a-plane rotation="-90 0 0" width="26" height="40"
+             position="0 0 2" color="#292a30"
+             material="roughness: 0.95"></a-plane>
+    <a-box position="-13 4 2" width="0.35" height="8" depth="40" color="#25232a"></a-box>
+    <a-box position="13 4 2" width="0.35" height="8" depth="40" color="#25232a"></a-box>
+    <a-box position="0 8 2" width="26" height="0.35" depth="40" color="#171820"></a-box>
+
+    <!-- Pared posterior con abertura central para la entrada -->
+    <a-box position="-7.5 4 14" width="11" height="8" depth="0.35" color="#302b31"></a-box>
+    <a-box position="7.5 4 14" width="11" height="8" depth="0.35" color="#302b31"></a-box>
+    <a-box position="0 7 14" width="4" height="2" depth="0.35" color="#302b31"></a-box>
+
+    <!-- Escenario: 15 m de ancho x 5 m de profundidad -->
+    <a-box position="0 0.35 -10.5" width="15" height="0.7" depth="5"
+           color="#30232b"></a-box>
+    <a-box position="0 0.72 -13.05" width="15" height="0.08" depth="0.12"
+           color="#c49a55"></a-box>
+    <a-plane position="0 4.1 -13.25" width="14.5" height="6.8"
+             color="#050509" material="shader: flat; side: double"></a-plane>
+    <a-text value="PANTALLA" align="center" position="0 4.1 -13.15"
+            width="7" color="#777777" side="double"></a-text>
+    <a-text value="ESCENARIO 15 x 5 m" align="center" position="0 1.2 -10.5"
+            rotation="-90 0 0" width="5" color="#e7d8c4"></a-text>
+
+    <!-- Cortinajes laterales -->
+    <a-box position="-7.8 3.7 -10.5" width="0.35" height="7.4" depth="5.2" color="#641321"></a-box>
+    <a-box position="7.8 3.7 -10.5" width="0.35" height="7.4" depth="5.2" color="#641321"></a-box>
+
+    <!-- Boletería detrás del acceso -->
+    <a-box position="0 0.65 18" width="4.2" height="1.3" depth="1"
+           color="#68452d"></a-box>
+    <a-box position="0 1.38 17.65" width="4.2" height="0.12" depth="1.5"
+           color="#b68a55"></a-box>
+    <a-text value="BOLETERIA" align="center" position="0 2.3 17.3"
+            width="5" color="#ffe0a6" side="double"></a-text>
+    <a-box position="-2.1 2.1 14" width="0.12" height="4.2" depth="0.3" color="#b68a55"></a-box>
+    <a-box position="2.1 2.1 14" width="0.12" height="4.2" depth="0.3" color="#b68a55"></a-box>
+    <!-- BOTÓN INTERACTIVO DE BOLETERÍA -->
+<!-- <a-box
+    position="0 2.2 16.8"
+    width="2.8"
+    height="0.9"
+    depth="0.12"
+    color="#c49a55"
+    class="interactivo"
+    ticket-booth>
+
+    <a-text
+        value="COMPRAR ENTRADA"
+        align="center"
+        color="#21150c"
+        width="3.5"
+        position="0 0 0.075">
+    </a-text>
+
+</a-box> -->
+<a-box
+    id="letrero-boleteria"
+    position="0 2.2 16.8"
+    width="2.8"
+    height="0.9"
+    depth="0.12"
+    color="#c49a55"
+    class="interactivo"
+    ticket-booth
+    visible="false">
+
+    <a-text
+        value="COMPRAR ENTRADA"
+        align="center"
+        color="#21150c"
+        width="3.5"
+        position="0 0 0.075">
+    </a-text>
+
+</a-box>
+    <!-- Luces de sala -->
+    <a-entity light="type: ambient; intensity: 0.55; color: #c8d4ff"></a-entity>
+    <a-entity light="type: point; intensity: 1.1; distance: 24; color: #ffd49a"
+              position="0 6 5"></a-entity>
+    <a-entity light="type: point; intensity: 0.8; distance: 20; color: #ffb2a5"
+              position="0 5 -7"></a-entity>
+
+    <!-- Cámara en primera persona: comienza en la entrada mirando al escenario -->
+   <!--  <a-entity id="jugador" position="0 0 11" mobile-walk> -->
+<!--  <a-entity
+    id="jugador"
+    position="0 0 16.2"
+    rotation="0 180 0"
+    mobile-walk> -->
+    <a-entity
+    id="jugador"
+    position="0 1 22.2"
+    rotation="0 0 0"
+    mobile-walk
+    booth-proximity>
+<a-camera
+    position="0 1.6 0"
+    look-controls="touchEnabled: false; magicWindowTrackingEnabled: true"
+    touch-look>
+
+  <!-- <a-cursor
+    fuse="false"
+    raycaster="objects: .interactivo"
+    color="#f5d58a">
+  </a-cursor> -->
+<a-cursor
+    fuse="true"
+    fuse-timeout="900"
+    raycaster="objects: .interactivo"
+    color="#f5d58a">
+</a-cursor>
+</a-camera>
+    </a-entity>
+
+    <a-sky color="#090b12"></a-sky>
+  </a-scene>
+
+  <script>
+    // Genera dos bloques de butacas en filas curvas, dejando un pasillo central.
+   // ======================================
+// MOVIMIENTO DEL JUGADOR
+// ======================================
+
+AFRAME.registerComponent("mobile-walk", {
+
+  schema: {
+    speed: { default: 3 }
+  },
+
+  init: function () {
+
+    this.movimientos = {
+      forward: false,
+      backward: false,
+      left: false,
+      right: false
+    };
+
+    this.camera = document.querySelector("#jugador a-camera");
+
+    // Escuchar teclado WASD y flechas.
+    this.teclado = {};
+
+    window.addEventListener("keydown", (e) => {
+      this.teclado[e.key.toLowerCase()] = true;
+    });
+
+    window.addEventListener("keyup", (e) => {
+      this.teclado[e.key.toLowerCase()] = false;
+    });
+
+    // Controles táctiles.
+    document.querySelectorAll("[data-move]").forEach(boton => {
+
+      const direccion = boton.dataset.move;
+
+      boton.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        boton.setPointerCapture(e.pointerId);
+        this.movimientos[direccion] = true;
+      });
+
+      const detener = () => {
+        this.movimientos[direccion] = false;
+      };
+
+      boton.addEventListener("pointerup", detener);
+      boton.addEventListener("pointercancel", detener);
+      boton.addEventListener("lostpointercapture", detener);
+    });
+
+  },
+
+  tick: function (time, delta) {
+
+    if (!this.camera) return;
+
+    const tiempo = Math.min(delta / 1000, 0.05);
+
+ //  <!--  const yaw = //this.camera.object3D.rotation.y; -->
+const yaw =
+    this.camera.object3D.rotation.y +
+    this.el.object3D.rotation.y;
+    // Dirección hacia donde mira el jugador.
+    const adelanteX = -Math.sin(yaw);
+    const adelanteZ = -Math.cos(yaw);
+
+    // Dirección lateral.
+    const derechaX = Math.cos(yaw);
+    const derechaZ = -Math.sin(yaw);
+
+    let avanzar = 0;
+    let lateral = 0;
+
+    // Teclado.
+    if (this.teclado["w"] || this.teclado["arrowup"]) avanzar++;
+    if (this.teclado["s"] || this.teclado["arrowdown"]) avanzar--;
+    if (this.teclado["d"] || this.teclado["arrowright"]) lateral++;
+    if (this.teclado["a"] || this.teclado["arrowleft"]) lateral--;
+
+    // Controles táctiles.
+    if (this.movimientos.forward) avanzar++;
+    if (this.movimientos.backward) avanzar--;
+    if (this.movimientos.right) lateral++;
+    if (this.movimientos.left) lateral--;
+
+    // Evitar movimiento diagonal más rápido.
+    const magnitud = Math.hypot(avanzar, lateral);
+
+    if (magnitud > 1) {
+      avanzar /= magnitud;
+      lateral /= magnitud;
+    }
+
+    const velocidad = this.data.speed * tiempo;
+
+    const posicion = this.el.object3D.position;
+
+    posicion.x += (
+      adelanteX * avanzar +
+      derechaX * lateral
+    ) * velocidad;
+
+    posicion.z += (
+      adelanteZ * avanzar +
+      derechaZ * lateral
+    ) * velocidad;
+
+    // Límites del cine.
+    posicion.x = Math.max(-11.5, Math.min(11.5, posicion.x));
+  //  <!-- posicion.z = Math.max(-7.5, Math.min(12.5, posicion.z)); -->
+posicion.z = Math.max(-7.5, Math.min(21, posicion.z));
+  }
+
+}); window.addEventListener("DOMContentLoaded", () => {
+      const scene = document.querySelector("a-scene");
+
+      function crearButaca(x, z) {
+        const grupo = document.createElement("a-entity");
+        grupo.setAttribute("position", `${x} 0 ${z}`);
+
+        const asiento = document.createElement("a-box");
+        asiento.setAttribute("position", "0 0.72 0");
+        asiento.setAttribute("width", "0.82");
+        asiento.setAttribute("height", "0.18");
+        asiento.setAttribute("depth", "0.82");
+        asiento.setAttribute("color", "#941b2b");
+
+        const respaldo = document.createElement("a-box");
+        respaldo.setAttribute("position", "0 1.22 0.32");
+        respaldo.setAttribute("width", "0.82");
+        respaldo.setAttribute("height", "0.95");
+        respaldo.setAttribute("depth", "0.18");
+        respaldo.setAttribute("color", "#68101d");
+
+        const pata = document.createElement("a-box");
+        pata.setAttribute("position", "0 0.34 0");
+        pata.setAttribute("width", "0.12");
+        pata.setAttribute("height", "0.55");
+        pata.setAttribute("depth", "0.12");
+        pata.setAttribute("color", "#33343a");
+
+        grupo.appendChild(asiento);
+        grupo.appendChild(respaldo);
+        grupo.appendChild(pata);
+        scene.appendChild(grupo);
+      }
+window.entradaComprada = false;
+      const filas = 6;
+      const butacasPorLado = 8;
+      for (let fila = 0; fila < filas; fila++) {
+        const zBase = -4.2 + fila * 1.75;
+        for (let lado of [-1, 1]) {
+          for (let i = 0; i < butacasPorLado; i++) {
+            const distancia = 1.9 + i * 1.05;
+            const x = lado * distancia;
+            // El centro de cada fila queda más cerca del escenario:
+            // esto produce la curvatura semicircular del plano.
+            const z = zBase + 1.15 * Math.pow(distancia / 10, 2);
+            crearButaca(x, z);
+          }
+        }
+      }
+    });
+  </script>
+  <script>
+
+document.addEventListener('DOMContentLoaded', function () {
+
+    const ventana = document.getElementById('ventana-entrada');
+    const jugador = document.getElementById('jugador');
+    const camara = document.querySelector('#jugador a-camera');
+
+    const comprar = document.getElementById('btnComprar');
+    const entrar = document.getElementById('btnEntrar');
+    const cerrar = document.getElementById('btnCerrar');
+    const mensaje = document.getElementById('mensaje-entrada');
+
+    // Simulación de compra.
+  
+    comprar.addEventListener('click', function () {
+
+    window.entradaComprada = true;
+
+    mensaje.textContent = '¡Entrada adquirida correctamente!';
+
+    comprar.style.display = 'none';
+    entrar.style.display = 'block';
+
+    document
+        .getElementById('letrero-boleteria')
+        .setAttribute('visible', false);
+
+});
+
+ // Acceder al auditorio.
+//    entrar.addEventListener('click', function () {
+
+  //      jugador.object3D.position.set(0, 0, 12);
+
+   //     camara.object3D.rotation.set(0, 0, 0);
+
+     //   ventana.classList.remove('visible');
+
+  //  });
+
+    // Cerrar boletería.
+    cerrar.addEventListener('click', function () {
+
+        ventana.classList.remove('visible');
+
+    }); 
+    
+    entrar.addEventListener('click', function () {
+
+    // Posición de ingreso al auditorio.
+    jugador.object3D.position.set(0, 0, 12);
+
+    // Dejar al jugador mirando hacia el escenario.
+    jugador.object3D.rotation.set(0, 0, 0);
+
+    // Restablecer la mirada de la cámara.
+    const look = camara.components['look-controls'];
+
+    if (look) {
+
+        if (look.yawObject) {
+            look.yawObject.rotation.y = 0;
+        }
+
+        if (look.pitchObject) {
+            look.pitchObject.rotation.x = 0;
+        }
+    }
+
+    ventana.classList.remove('visible');
+
+});
+
+});
+
+</script>
+</body>
+</html>
